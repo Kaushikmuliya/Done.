@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Done. — Task Manager</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+<link href="https://fonts.googleapis.com/css2?family=Caveat:wght@400;600;700&family=Zilla+Slab:ital,wght@0,400;0,500;0,600;1,400&family=Azeret+Mono:wght@300;400;500&display=swap" rel="stylesheet"/>
+<link rel="stylesheet" href="style.css"/>
+</head>
+<body>
+
+<header>
+  <div class="logo">Done<span>.</span></div>
+  <div class="header-meta" id="headerDate"></div>
+</header>
+
+<div class="wrapper">
+
+  <!-- Date & summary -->
+  <div class="date-strip">
+    <div class="date-text" id="todayLabel"></div>
+    <div class="summary-pills">
+      <span class="pill pill-total" id="pillTotal">0 tasks</span>
+      <span class="pill pill-done"  id="pillDone">0 done</span>
+      <span class="pill pill-left"  id="pillLeft">0 left</span>
+    </div>
+  </div>
+
+  <!-- Progress -->
+  <div class="progress-wrap">
+    <div class="progress-label">
+      <span>Progress</span>
+      <span id="progressPct">0%</span>
+    </div>
+    <div class="progress-track">
+      <div class="progress-fill" id="progressFill"></div>
+    </div>
+  </div>
+
+  <!-- Input card -->
+  <div class="input-card">
+    <div class="input-label">✏ What needs to be done?</div>
+    <div class="input-row">
+      <input class="task-input" id="taskInput" type="text" placeholder="Write it down..." maxlength="120" autocomplete="off"/>
+      <select class="priority-select" id="prioritySelect">
+        <option value="high">🔴 High</option>
+        <option value="medium" selected>🟠 Medium</option>
+        <option value="low">🟢 Low</option>
+      </select>
+      <button class="add-btn" onclick="addTask()">+ Add</button>
+    </div>
+  </div>
+
+  <!-- Filters -->
+  <div class="filter-bar">
+    <button class="filter-btn active" data-filter="all"       onclick="setFilter('all',this)">All</button>
+    <button class="filter-btn"        data-filter="active"    onclick="setFilter('active',this)">Active</button>
+    <button class="filter-btn"        data-filter="completed" onclick="setFilter('completed',this)">Done</button>
+    <div class="spacer"></div>
+    <button class="clear-btn" onclick="clearCompleted()">Clear Done</button>
+  </div>
+
+  <!-- Task list -->
+  <div id="task-list"></div>
+
+</div>
+
+<!-- Toast -->
+<div class="toast" id="toast"></div>
+
+<script>
+  // ── State ──
+  let tasks = JSON.parse(localStorage.getItem('done_tasks') || '[]');
+  let filter = 'all';
+
+  // ── Save ──
+  function save() {
+    localStorage.setItem('done_tasks', JSON.stringify(tasks));
+  }
+
+  // ── Toast ──
+  function toast(msg) {
+    const el = document.getElementById('toast');
+    el.textContent = msg;
+    el.classList.add('show');
+    clearTimeout(el._t);
+    el._t = setTimeout(() => el.classList.remove('show'), 2200);
+  }
+
+  // ── Date ──
+  function setDates() {
+    const now = new Date();
+    const days = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+    const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    document.getElementById('todayLabel').textContent =
+      `${days[now.getDay()]}, ${months[now.getMonth()]} ${now.getDate()}`;
+    document.getElementById('headerDate').textContent =
+      now.toLocaleTimeString('en-IN', {hour:'2-digit', minute:'2-digit'});
+  }
+  setDates();
+  setInterval(() => {
+    document.getElementById('headerDate').textContent =
+      new Date().toLocaleTimeString('en-IN', {hour:'2-digit', minute:'2-digit'});
+  }, 30000);
+
+  // ── Add ──
+  function addTask() {
+    const input = document.getElementById('taskInput');
+    const text = input.value.trim();
+    if (!text) { input.focus(); shake(input); return; }
+
+    const priority = document.getElementById('prioritySelect').value;
+    const task = {
+      id: Date.now(),
+      text,
+      priority,
+      done: false,
+      createdAt: new Date().toLocaleTimeString('en-IN', {hour:'2-digit', minute:'2-digit'})
+    };
+
+    tasks.unshift(task);
+    save();
+    render();
+    input.value = '';
+    input.focus();
+    toast('Task added ✓');
+  }
+
+  // ── Toggle ──
+  function toggleTask(id) {
+    const t = tasks.find(t => t.id === id);
+    if (!t) return;
+    t.done = !t.done;
+    save();
+    render();
+    toast(t.done ? 'Marked done! 🎉' : 'Back to active');
+  }
+
+  // ── Delete ──
+  function deleteTask(id) {
+    const el = document.querySelector(`[data-id="${id}"]`);
+    if (el) {
+      el.style.transform = 'translateX(40px)';
+      el.style.opacity = '0';
+      setTimeout(() => {
+        tasks = tasks.filter(t => t.id !== id);
+        save();
+        render();
+      }, 280);
+    }
+    toast('Task removed');
+  }
+
+  // ── Filter ──
+  function setFilter(f, btn) {
+    filter = f;
+    document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    render();
+  }
+
+  // ── Clear done ──
+  function clearCompleted() {
+    const count = tasks.filter(t => t.done).length;
+    if (!count) { toast('Nothing to clear!'); return; }
+    tasks = tasks.filter(t => !t.done);
+    save();
+    render();
+    toast(`Cleared ${count} completed task${count > 1 ? 's' : ''}`);
+  }
+
+  // ── Shake animation ──
+  function shake(el) {
+    el.style.animation = 'none';
+    el.style.borderBottomColor = '#c0392b';
+    setTimeout(() => { el.style.borderBottomColor = ''; }, 600);
+  }
+
+  // ── Render ──
+  function render() {
+    const list = document.getElementById('task-list');
+    const total = tasks.length;
+    const done = tasks.filter(t => t.done).length;
+    const left = total - done;
+    const pct = total ? Math.round((done / total) * 100) : 0;
+
+    // Update pills
+    document.getElementById('pillTotal').textContent = `${total} task${total !== 1 ? 's' : ''}`;
+    document.getElementById('pillDone').textContent  = `${done} done`;
+    document.getElementById('pillLeft').textContent  = `${left} left`;
+    document.getElementById('progressPct').textContent = `${pct}%`;
+    document.getElementById('progressFill').style.width = `${pct}%`;
+
+    // Filter
+    let visible = tasks;
+    if (filter === 'active')    visible = tasks.filter(t => !t.done);
+    if (filter === 'completed') visible = tasks.filter(t => t.done);
+
+    if (!visible.length) {
+      const msgs = {
+        all:       ['📝', 'All clear!', 'ADD SOMETHING ABOVE'],
+        active:    ['✅', 'Nothing active!', 'ALL TASKS DONE'],
+        completed: ['🎯', 'Nothing done yet', 'GET TO WORK!'],
+      };
+      const [icon, title, sub] = msgs[filter];
+      list.innerHTML = `
+        <div class="empty-state">
+          <div class="empty-icon">${icon}</div>
+          <div class="empty-title">${title}</div>
+          <div class="empty-sub">${sub}</div>
+        </div>`;
+      return;
+    }
+
+    list.innerHTML = visible.map((t, i) => `
+      <div class="task-item ${t.done ? 'done' : ''}"
+           data-id="${t.id}"
+           data-priority="${t.priority}"
+           style="animation-delay:${i * 0.04}s">
+        <div class="task-check" onclick="toggleTask(${t.id})" title="Toggle complete"></div>
+        <div class="task-body">
+          <div class="task-text">${escHtml(t.text)}</div>
+          <div class="task-meta">
+            <span class="task-time">${t.createdAt}</span>
+            <span class="priority-badge ${t.priority}">${t.priority}</span>
+          </div>
+        </div>
+        <div class="stamp">Done</div>
+        <button class="task-del" onclick="deleteTask(${t.id})" title="Delete task">✕</button>
+      </div>
+    `).join('');
+  }
+
+  function escHtml(s) {
+    return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+
+  // ── Enter key ──
+  document.getElementById('taskInput').addEventListener('keydown', e => {
+    if (e.key === 'Enter') addTask();
+  });
+
+  // ── Init ──
+  render();
+</script>
+</body>
+</html>
