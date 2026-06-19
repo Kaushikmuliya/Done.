@@ -250,9 +250,15 @@ header {
   transition: box-shadow 0.2s, transform 0.2s, opacity 0.3s;
   animation: slideIn 0.3s ease both;
   position: relative;
+  z-index: 1;
   overflow: hidden;
 }
 @keyframes slideIn { from{opacity:0;transform:translateX(-16px);} to{opacity:1;transform:translateX(0);} }
+
+/* Depth cues while a toggled card animates into its new spot */
+.task-item.rolling-down { z-index: 0; }   /* completing: tucks behind the cards it passes */
+.task-item.rolling-up   { z-index: 5; }   /* reactivating: rises above the cards it passes */
+
 
 .task-item:hover { box-shadow: 3px 3px 0 rgba(28,26,20,0.12); transform: translateX(2px); }
 

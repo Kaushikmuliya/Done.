@@ -71,16 +71,12 @@
 <div class="toast" id="toast"></div>
 
 <script>
-  // ── State ──
   let tasks = JSON.parse(localStorage.getItem('done_tasks') || '[]');
   let filter = 'all';
+  let lastToggled = null;
 
-  // ── Save ──
-  function save() {
-    localStorage.setItem('done_tasks', JSON.stringify(tasks));
-  }
+  const save = () => localStorage.setItem('done_tasks', JSON.stringify(tasks));
 
-  // ── Toast ──
   function toast(msg) {
     const el = document.getElementById('toast');
     el.textContent = msg;
@@ -89,38 +85,32 @@
     el._t = setTimeout(() => el.classList.remove('show'), 2200);
   }
 
-  // ── Date ──
   function setDates() {
     const now = new Date();
     const days = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
     const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-    document.getElementById('todayLabel').textContent =
-      `${days[now.getDay()]}, ${months[now.getMonth()]} ${now.getDate()}`;
-    document.getElementById('headerDate').textContent =
-      now.toLocaleTimeString('en-IN', {hour:'2-digit', minute:'2-digit'});
+    document.getElementById('todayLabel').textContent = `${days[now.getDay()]}, ${months[now.getMonth()]} ${now.getDate()}`;
+    document.getElementById('headerDate').textContent = now.toLocaleTimeString('en-IN', {hour:'2-digit', minute:'2-digit'});
   }
   setDates();
   setInterval(() => {
-    document.getElementById('headerDate').textContent =
-      new Date().toLocaleTimeString('en-IN', {hour:'2-digit', minute:'2-digit'});
+    document.getElementById('headerDate').textContent = new Date().toLocaleTimeString('en-IN', {hour:'2-digit', minute:'2-digit'});
   }, 30000);
 
-  // ── Add ──
   function addTask() {
     const input = document.getElementById('taskInput');
     const text = input.value.trim();
     if (!text) { input.focus(); shake(input); return; }
 
-    const priority = document.getElementById('prioritySelect').value;
-    const task = {
+    tasks.unshift({
       id: Date.now(),
       text,
-      priority,
+      priority: document.getElementById('prioritySelect').value,
       done: false,
+      completedAt: null,
       createdAt: new Date().toLocaleTimeString('en-IN', {hour:'2-digit', minute:'2-digit'})
-    };
+    });
 
-    tasks.unshift(task);
     save();
     render();
     input.value = '';
@@ -128,17 +118,17 @@
     toast('Task added ✓');
   }
 
-  // ── Toggle ──
   function toggleTask(id) {
     const t = tasks.find(t => t.id === id);
     if (!t) return;
     t.done = !t.done;
+    t.completedAt = t.done ? Date.now() : null;
+    lastToggled = { id, direction: t.done ? 'down' : 'up' };
     save();
     render();
     toast(t.done ? 'Marked done! 🎉' : 'Back to active');
   }
 
-  // ── Delete ──
   function deleteTask(id) {
     const el = document.querySelector(`[data-id="${id}"]`);
     if (el) {
@@ -153,7 +143,6 @@
     toast('Task removed');
   }
 
-  // ── Filter ──
   function setFilter(f, btn) {
     filter = f;
     document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
@@ -161,7 +150,6 @@
     render();
   }
 
-  // ── Clear done ──
   function clearCompleted() {
     const count = tasks.filter(t => t.done).length;
     if (!count) { toast('Nothing to clear!'); return; }
@@ -171,32 +159,78 @@
     toast(`Cleared ${count} completed task${count > 1 ? 's' : ''}`);
   }
 
-  // ── Shake animation ──
   function shake(el) {
     el.style.animation = 'none';
     el.style.borderBottomColor = '#c0392b';
     setTimeout(() => { el.style.borderBottomColor = ''; }, 600);
   }
 
-  // ── Render ──
+  // Reuses the existing node for a card that already exists (so its slideIn
+  // keyframe can't replay); only brand-new tasks get a freshly created node.
+  function buildOrUpdateCard(list, t, isNew) {
+    let el;
+    if (isNew) {
+      el = document.createElement('div');
+      el.className = 'task-item';
+      el.dataset.id = t.id;
+      el.innerHTML = `
+        <div class="task-check" onclick="toggleTask(${t.id})" title="Toggle complete"></div>
+        <div class="task-body">
+          <div class="task-text"></div>
+          <div class="task-meta">
+            <span class="task-time"></span>
+            <span class="priority-badge"></span>
+          </div>
+        </div>
+        <div class="stamp">Done</div>
+        <button class="task-del" onclick="deleteTask(${t.id})" title="Delete task">✕</button>
+      `;
+    } else {
+      el = list.querySelector(`[data-id="${t.id}"]`);
+      el.style.animation = 'none';
+    }
+
+    el.classList.toggle('done', t.done);
+    el.dataset.priority = t.priority;
+    el.querySelector('.task-text').textContent = t.text;
+    el.querySelector('.task-time').textContent = t.createdAt;
+    const badge = el.querySelector('.priority-badge');
+    badge.className = `priority-badge ${t.priority}`;
+    badge.textContent = t.priority;
+    return el;
+  }
+
   function render() {
     const list = document.getElementById('task-list');
+    const prevRects = {};
+    const existingIds = new Set();
+    list.querySelectorAll('.task-item').forEach(el => {
+      existingIds.add(el.dataset.id);
+      prevRects[el.dataset.id] = el.getBoundingClientRect();
+    });
+
     const total = tasks.length;
     const done = tasks.filter(t => t.done).length;
-    const left = total - done;
     const pct = total ? Math.round((done / total) * 100) : 0;
 
-    // Update pills
     document.getElementById('pillTotal').textContent = `${total} task${total !== 1 ? 's' : ''}`;
-    document.getElementById('pillDone').textContent  = `${done} done`;
-    document.getElementById('pillLeft').textContent  = `${left} left`;
+    document.getElementById('pillDone').textContent = `${done} done`;
+    document.getElementById('pillLeft').textContent = `${total - done} left`;
     document.getElementById('progressPct').textContent = `${pct}%`;
     document.getElementById('progressFill').style.width = `${pct}%`;
 
-    // Filter
-    let visible = tasks;
-    if (filter === 'active')    visible = tasks.filter(t => !t.done);
-    if (filter === 'completed') visible = tasks.filter(t => t.done);
+    // "all": active tasks first, then completed (most recently completed on top)
+    let visible;
+    if (filter === 'active') {
+      visible = tasks.filter(t => !t.done);
+    } else if (filter === 'completed') {
+      visible = tasks.filter(t => t.done).sort((a, b) => b.completedAt - a.completedAt);
+    } else {
+      visible = [
+        ...tasks.filter(t => !t.done),
+        ...tasks.filter(t => t.done).sort((a, b) => b.completedAt - a.completedAt)
+      ];
+    }
 
     if (!visible.length) {
       const msgs = {
@@ -214,35 +248,41 @@
       return;
     }
 
-    list.innerHTML = visible.map((t, i) => `
-      <div class="task-item ${t.done ? 'done' : ''}"
-           data-id="${t.id}"
-           data-priority="${t.priority}"
-           style="animation-delay:${i * 0.04}s">
-        <div class="task-check" onclick="toggleTask(${t.id})" title="Toggle complete"></div>
-        <div class="task-body">
-          <div class="task-text">${escHtml(t.text)}</div>
-          <div class="task-meta">
-            <span class="task-time">${t.createdAt}</span>
-            <span class="priority-badge ${t.priority}">${t.priority}</span>
-          </div>
-        </div>
-        <div class="stamp">Done</div>
-        <button class="task-del" onclick="deleteTask(${t.id})" title="Delete task">✕</button>
-      </div>
-    `).join('');
+    const frag = document.createDocumentFragment();
+    visible.forEach(t => {
+      frag.appendChild(buildOrUpdateCard(list, t, !existingIds.has(String(t.id))));
+    });
+    list.innerHTML = '';
+    list.appendChild(frag);
+
+    // Slide each moved card into its new spot; the just-toggled card gets a
+    // depth cue — tucks behind on completion, rises above on reactivation.
+    list.querySelectorAll('.task-item').forEach(el => {
+      const prev = prevRects[el.dataset.id];
+      if (!prev) return;
+      const dy = prev.top - el.getBoundingClientRect().top;
+      if (!dy) return;
+
+      const isToggled = lastToggled && String(lastToggled.id) === el.dataset.id;
+      const startScale = isToggled ? (lastToggled.direction === 'down' ? 0.96 : 1.04) : 1;
+      if (isToggled) el.classList.add(lastToggled.direction === 'down' ? 'rolling-down' : 'rolling-up');
+
+      el.style.transition = 'none';
+      el.style.transform = `translateY(${dy}px) scale(${startScale})`;
+      requestAnimationFrame(() => {
+        el.style.transition = 'transform 0.35s cubic-bezier(0.4,0,0.2,1)';
+        el.style.transform = 'translateY(0) scale(1)';
+      });
+
+      if (isToggled) setTimeout(() => el.classList.remove('rolling-down', 'rolling-up'), 360);
+    });
+    lastToggled = null;
   }
 
-  function escHtml(s) {
-    return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
-  }
-
-  // ── Enter key ──
   document.getElementById('taskInput').addEventListener('keydown', e => {
     if (e.key === 'Enter') addTask();
   });
 
-  // ── Init ──
   render();
 </script>
 </body>
